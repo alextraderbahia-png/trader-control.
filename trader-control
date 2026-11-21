@@ -1,0 +1,267 @@
+index.html 
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TRADER CONTROL</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#101820;color:#fff;font-family:Arial,sans-serif}
+header{padding:22px;background:#172630;border-bottom:1px solid #30434d}
+h1{margin:0;color:#50d99a;font-size:24px}
+small{color:#9bafba}
+main{max-width:850px;margin:auto;padding:16px}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin:15px 0}
+button{background:#263944;color:white;border:0;border-radius:8px;padding:11px;cursor:pointer}
+button.active,.green{background:#159b69}
+input,select{background:#20313c;color:white;border:1px solid #425660;border-radius:7px;padding:11px;width:100%;margin:5px 0}
+.card{background:#1c2c36;padding:16px;border-radius:12px;margin:12px 0}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.big{font-size:25px;color:#50d99a;font-weight:bold}
+.muted{color:#9bafba;font-size:13px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.win{color:#50d99a}.loss{color:#ff7777}
+.trade{display:grid;grid-template-columns:1fr 2fr;align-items:center;gap:8px;margin:10px 0}
+.status{font-weight:bold}
+.hidden{display:none!important}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td,th{padding:9px;border-bottom:1px solid #394b55;text-align:left}
+</style>
+</head>
+<body>
+<header>
+<h1>TRADER CONTROL</h1>
+<small>GERENCIAMENTO DE OPÇÕES BINÁRIAS · 30 DIAS</small>
+</header>
+<main>
+
+<section id="login" class="card">
+<h2>🔐 Acesso ao sistema</h2>
+<p id="pinMessage">Cadastre um PIN pessoal para este navegador.</p>
+<input id="pin" type="password" placeholder="Digite seu PIN" maxlength="30">
+<button class="green" onclick="authenticate()">Entrar / Cadastrar PIN</button>
+<p class="muted">PIN local para teste. Não oferece proteção contra acesso técnico ao navegador.</p>
+</section>
+
+<section id="app" class="hidden">
+<nav>
+<button onclick="show('home',this)" class="active">Painel</button>
+<button onclick="show('ops',this)">Operações</button>
+<button onclick="show('finance',this)">Banca</button>
+<button onclick="show('withdraw',this)">Saques</button>
+<button onclick="show('report',this)">Relatórios</button>
+</nav>
+
+<section id="home">
+<div class="grid">
+<div class="card"><small>BANCA DISPONÍVEL</small><div class="big" id="balance">R$ 0,00</div></div>
+<div class="card"><small>LUCRO / PREJUÍZO</small><div class="big" id="profit">R$ 0,00</div></div>
+<div class="card"><small>TOTAL SACADO</small><div class="big" id="taken">R$ 0,00</div></div>
+<div class="card"><small>OPERAÇÕES</small><div class="big" id="count">0 / 270</div></div>
+</div>
+<div class="card">
+<h3>Resumo dos resultados</h3>
+<div class="grid">
+<div>WIN <div class="big" id="wins">0</div></div>
+<div>LOSS <div class="big" id="losses">0</div></div>
+<div>METAS <div class="big" id="metas">0</div></div>
+<div>STOPS <div class="big" id="stops">0</div></div>
+</div>
+</div>
+<div class="card">
+<h3>Dia de acompanhamento</h3>
+<select id="daySelect" onchange="renderOps()"></select>
+<p class="muted">Três turnos, três operações por turno.</p>
+<button class="green" onclick="show('ops')">Registrar operações</button>
+</div>
+</section>
+
+<section id="ops" class="hidden">
+<div class="card">
+<h2>Registro de operações</h2>
+<label>Dia</label><select id="opDay" onchange="renderOps()"></select>
+<div id="turns"></div>
+</div>
+</section>
+
+<section id="finance" class="hidden">
+<div class="card">
+<h2>Configuração financeira</h2>
+<label>Banca inicial (R$)</label>
+<input id="initial" type="number" min="0" step=".01">
+<label>Valor fixo por entrada (R$)</label>
+<input id="stake" type="number" min="0" step=".01">
+<label>Payout da corretora (%)</label>
+<input id="payout" type="number" min="0" max="1000" step=".1">
+<button class="green" onclick="saveFinance()">Salvar configurações</button>
+<p class="muted">O lucro de cada WIN é calculado pelo payout. LOSS desconta a entrada. Empate não altera a banca.</p>
+</div>
+</section>
+
+<section id="withdraw" class="hidden">
+<div class="card">
+<h2>💰 Registrar saque</h2>
+<p>Disponível: <b id="withdrawBalance">R$ 0,00</b></p>
+<label>Data</label><input type="date" id="withdrawDate">
+<label>Valor (R$)</label><input type="number" id="withdrawAmount" min=".01" step=".01">
+<button class="green" onclick="addWithdrawal()">Registrar saque</button>
+</div>
+<div class="card"><h3>Histórico de saques</h3><div id="withdrawList"></div></div>
+</section>
+
+<section id="report" class="hidden">
+<div class="card">
+<h2>Relatório geral</h2>
+<div id="reportData"></div>
+</div>
+<div class="card">
+<button onclick="exportData()">Baixar backup dos dados</button>
+<button onclick="document.getElementById('restore').click()">Restaurar backup</button>
+<input id="restore" type="file" accept=".json" onchange="restoreData(event)">
+</div>
+</section>
+</section>
+</main>
+
+<script>
+const KEY='traderControlDataV1';
+const PINKEY='traderControlPinV1';
+const empty=()=>({
+initial:0,stake:0,payout:90,
+days:Array.from({length:30},()=>Array.from({length:3},()=>['','',''])),
+withdrawals:[]
+});
+let data;
+try{data=JSON.parse(localStorage.getItem(KEY))||empty()}catch(e){data=empty()}
+let currentDay=1;
+const money=n=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const $=id=>document.getElementById(id);
+function persist(){localStorage.setItem(KEY,JSON.stringify(data));render()}
+function authenticate(){
+const p=$('pin').value;
+if(!p)return alert('Digite um PIN.');
+if(!localStorage.getItem(PINKEY)){
+localStorage.setItem(PINKEY,p);
+$('pinMessage').textContent='PIN cadastrado. Entre novamente.';
+$('pin').value='';return;
+}
+if(p!==localStorage.getItem(PINKEY))return alert('PIN incorreto.');
+$('login').classList.add('hidden');
+$('app').classList.remove('hidden');
+render();
+}
+if(localStorage.getItem(PINKEY))$('pinMessage').textContent='Digite seu PIN para entrar.';
+function show(id,btn){
+['home','ops','finance','withdraw','report'].forEach(x=>$(x).classList.add('hidden'));
+$(id).classList.remove('hidden');
+document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
+if(btn)btn.classList.add('active');
+render();
+}
+function classify(t){
+let w=t.filter(x=>x==='WIN').length;
+let l=t.filter(x=>x==='LOSS').length;
+if(w===2&&l===1)return'META';
+if(w===3&&l===0)return'META';
+if(l>=2)return'STOP';
+return'PENDENTE';
+}
+function totals(){
+let wins=0,losses=0,ties=0,metas=0,stops=0;
+data.days.forEach(day=>day.forEach(t=>{
+wins+=t.filter(x=>x==='WIN').length;
+losses+=t.filter(x=>x==='LOSS').length;
+ties+=t.filter(x=>x==='EMPATE').length;
+let s=classify(t);if(s==='META')metas++;if(s==='STOP')stops++;
+}));
+return{wins,losses,ties,metas,stops};
+}
+function calc(){
+let t=totals(),stake=Number(data.stake),payout=Number(data.payout);
+let profit=t.wins*stake*payout/100-t.losses*stake;
+let withdrawn=data.withdrawals.reduce((a,b)=>a+b.amount,0);
+return{...t,profit,withdrawn,balance:Number(data.initial)+profit-withdrawn};
+}
+function render(){
+if(!$('app')||$('app').classList.contains('hidden'))return;
+let c=calc();
+$('balance').textContent=money(c.balance);
+$('profit').textContent=money(c.profit);
+$('taken').textContent=money(c.withdrawn);
+$('count').textContent=(c.wins+c.losses+c.ties)+' / 270';
+$('wins').textContent=c.wins;$('losses').textContent=c.losses;
+$('metas').textContent=c.metas;$('stops').textContent=c.stops;
+$('withdrawBalance').textContent=money(c.balance);
+$('initial').value=data.initial;
+$('stake').value=data.stake;
+$('payout').value=data.payout;
+$('withdrawList').innerHTML=data.withdrawals.length?data.withdrawals.map(w=>`<p>${w.date} — <b class="loss">${money(w.amount)}</b></p>`).join(''):'<p class="muted">Nenhum saque registrado.</p>';
+$('reportData').innerHTML=`
+<p>WIN: ${c.wins} | LOSS: ${c.losses} | EMPATES: ${c.ties}</p>
+<p>Assertividade: ${c.wins+c.losses?((c.wins/(c.wins+c.losses))*100).toFixed(1):0}%</p>
+<p>Metas: ${c.metas} | Stops: ${c.stops}</p>
+<p>Lucro operacional: ${money(c.profit)}</p>
+<p>Total sacado: ${money(c.withdrawn)}</p>
+<p>Banca disponível: ${money(c.balance)}</p>
+<table><tr><th>Dia</th><th>06:30</th><th>11:00</th><th>21:00</th></tr>
+${data.days.map((d,i)=>`<tr><td>${i+1}</td>${d.map(t=>`<td>${classify(t)}</td>`).join('')}</tr>`).join('')}
+</table>`;
+}
+function setupDays(){
+['daySelect','opDay'].forEach(id=>{
+$(id).innerHTML=Array.from({length:30},(_,i)=>`<option value="${i+1}">Dia ${i+1}</option>`).join('');
+$(id).value=currentDay;
+});
+}
+function renderOps(){
+currentDay=Number($('opDay')?.value||$('daySelect')?.value||1);
+if($('daySelect'))$('daySelect').value=currentDay;
+if($('opDay'))$('opDay').value=currentDay;
+const names=['MANHÃ · 06:30','SEGUNDO TURNO · 11:00','NOITE · 21:00'];
+$('turns').innerHTML=data.days[currentDay-1].map((t,s)=>`
+<div class="card">
+<div class="row"><h3>${names[s]}</h3><b class="status ${classify(t)==='META'?'win':classify(t)==='STOP'?'loss':''}">${classify(t)}</b></div>
+${t.map((v,i)=>`<div class="trade"><span>Operação ${i+1}</span>
+<select onchange="setTrade(${s},${i},this.value)">
+<option value="" ${v===''?'selected':''}>Pendente</option>
+<option value="WIN" ${v==='WIN'?'selected':''}>WIN</option>
+<option value="LOSS" ${v==='LOSS'?'selected':''}>LOSS</option>
+<option value="EMPATE" ${v==='EMPATE'?'selected':''}>EMPATE</option>
+</select></div>`).join('')}
+</div>`).join('');
+}
+function setTrade(s,i,v){data.days[currentDay-1][s][i]=v;persist();renderOps()}
+function saveFinance(){
+data.initial=Math.max(0,Number($('initial').value));
+data.stake=Math.max(0,Number($('stake').value));
+data.payout=Math.max(0,Number($('payout').value));
+persist();alert('Configurações salvas!');
+}
+function addWithdrawal(){
+let amount=Number($('withdrawAmount').value),date=$('withdrawDate').value;
+if(!date||amount<=0)return alert('Informe data e valor.');
+if(amount>calc().balance)return alert('O saque é maior que a banca disponível.');
+data.withdrawals.push({date,amount});
+$('withdrawAmount').value='';persist();alert('Saque registrado!');
+}
+function exportData(){
+let blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='trader-control-backup.json';a.click();URL.revokeObjectURL(a.href);
+}
+function restoreData(e){
+let f=e.target.files[0];if(!f)return;
+let r=new FileReader();r.onload=()=>{
+try{let d=JSON.parse(r.result);if(!d.days||d.days.length!==30)throw Error();
+data=d;persist();alert('Backup restaurado.');
+}catch(err){alert('Arquivo de backup inválido.');}
+};r.readAsText(f);
+}
+setupDays();
+$('opDay').addEventListener('change',renderOps);
+$('daySelect').addEventListener('change',()=>{currentDay=Number($('daySelect').value);$('opDay').value=currentDay;renderOps()});
+$('withdrawDate').value=new Date().toISOString().slice(0,10);
+render();
+</script>
+</body>
+</html>
